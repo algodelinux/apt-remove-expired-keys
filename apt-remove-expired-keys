@@ -1,0 +1,68 @@
+#!/bin/bash
+#
+# nombre              : apt-remove-expired-keys
+# descripción         : Eliminar claves públicas de repositorios expiradas
+# autor               : Esteban M. Navas Martín
+# fecha creación      : 10032020
+# última modificación : 27102022
+# uso                 : apt-remove-expired-keys
+# instalación         : Guardar en  /usr/local/sbin/ y asignar permisos de ejecución
+
+#
+# Copyright 2020-2022, Esteban M. Navas Martín <algodelinux@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+#
+
+RED='\e[0;31m'
+GREEN='\e[0;32m'
+ORANGE='\e[0;33m'
+YELLOW='\e[1;33m'
+NC='\e[0m' # No Color
+
+
+# Ensure we're running as root
+if [ "$(id -u)" != 0 ]; then
+        echo -e "${RED}ERROR: This script must run as root.${NC}" 1>&2
+        exit 1
+fi
+
+
+OLDKEYFILE="/etc/apt/trusted.gpg"
+KEYPATHS="/usr/share/keyrings /etc/apt/keyrings /etc/apt/trusted.gpg.d"
+
+if [ -f $OLDKEYFILE ]; then
+   LC_ALL=C gpg --no-default-keyring --keyring=$OLDKEYFILE --list-keys | grep -E pub.*expired -A 1 > /tmp/expiredkeys
+
+   if [ -s /tmp/expiredkeys ]; then
+      for keyid in $(grep -E [[:xdigit:]]{40} /tmp/expiredkeys | sed 's/^ *//; s/ *$//; /^$/d; /^\s*$/d; s/^\t*//; s/\t*$//;'); do
+          echo -e "${GREEN}Deleting KEY $keyid from $OLDKEYFILE${NC}"
+          gpg --no-default-keyring --keyring=$OLDKEYFILE --batch --yes --delete-keys $keyid
+      done
+   fi
+fi
+
+for KEYPATH in $KEYPATHS; do
+    if [ -d $KEYPATH ] && [ "$(ls -A $KEYPATH)" ]; then
+       for keyfile in $(find $KEYPATH/* -not -name "*~"); do
+           LC_ALL=C gpg --no-default-keyring --keyring=$keyfile --list-keys | grep -E pub.*expired -A 1 > /tmp/expiredkeys
+
+           if [ -s /tmp/expiredkeys ]; then
+              for keyid in $(grep -E [[:xdigit:]]{40} /tmp/expiredkeys | sed 's/^ *//; s/ *$//; /^$/d; /^\s*$/d; s/^\t*//; s/\t*$//;'); do
+                  echo -e "${GREEN}Deleting KEY $keyid from $keyfile${NC}"
+                  gpg --no-default-keyring --keyring=$keyfile --batch --yes --delete-keys $keyid
+              done
+          fi
+       done
+    fi
+done
+
